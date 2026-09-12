@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "familia",
+  "workers_dev": true,
+  "preview_urls": false,
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "familia-db",
+      "database_id": "b332da0c-09a1-4873-86ca-3d133798606e",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "APP_URL": "https://familia.atelierdacostafinanceiro.workers.dev",
+    "ADMIN_EMAIL": "atelierdacostafinanceiro@gmail.com",
+    "VAPID_PUBLIC_KEY": "BMfwwrHyIXmm5R8ooyhSfx7SndM1L8b9iSjloS5vpteWPbInhVB_-e80Y5wtUiZWxCne5jfbnH9IPtHVGKkhNZY",
+    "VAPID_SUBJECT": "mailto:atelierdacostafinanceiro@gmail.com"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

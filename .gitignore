@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.dev.vars
+.wrangler/
+.secrets-tmp/
+wrangler_login.log
+wrangler_url.txt
+npm_install.log
+*.tsbuildinfo
