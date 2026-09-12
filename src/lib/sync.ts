@@ -35,11 +35,21 @@ function getMetaSync(key: string) {
   return undefined;
 }
 
-export async function enqueue(entityId: string, expectedRevision: number, action: string, payload: unknown) {
+export async function enqueue(entityId: string, _baseRevision: number, action: string, payload: unknown) {
+  // revisão esperada: encadeia com operações pendentes do mesmo item;
+  // sem pendências, usa a revisão local confirmada
+  const last = await db.outbox.where("entityId").equals(entityId).last();
+  let expected: number;
+  if (last) {
+    expected = last.expectedRevision + 1;
+  } else {
+    const local = (await getLocalEntity(entityId)) as { revision: number } | undefined;
+    expected = local ? local.revision : 0;
+  }
   const op: OutboxItem = {
     opId: crypto.randomUUID(),
     entityId,
-    expectedRevision,
+    expectedRevision: expected,
     action,
     payload,
     createdAt: new Date().toISOString(),
@@ -49,6 +59,16 @@ export async function enqueue(entityId: string, expectedRevision: number, action
   notify();
   void scheduleSync(0);
   return op;
+}
+
+async function getLocalEntity(entityId: string): Promise<unknown> {
+  return (
+    (await db.tasks.get(entityId)) ??
+    (await db.notes.get(entityId)) ??
+    (await db.folders.get(entityId)) ??
+    (await db.files.get(entityId)) ??
+    (await db.pins.get(entityId))
+  );
 }
 
 // Tarefas/notas: alterações locais otimistas
@@ -184,6 +204,8 @@ export async function resolveConflictApplyMine(entityId: string) {
     conflict.kind === "task"
       ? { title: (mine as Task).title, description: (mine as Task).description, checklist: (mine as Task).checklist, responsibleIds: (mine as Task).responsibleIds, dueDate: (mine as Task).dueDate, dueTime: (mine as Task).dueTime, urgency: (mine as Task).urgency, reminderEnabled: (mine as Task).reminderEnabled }
       : { title: (mine as Note).title, content: (mine as Note).content };
+  // a minha edição passa a basear-se na revisão atual do servidor
+  await table.put({ ...mine, revision: (conflict.server as Task | Note).revision } as never);
   await db.conflicts.delete(entityId);
   await enqueue(entityId, (conflict.server as Task | Note).revision, conflict.kind === "task" ? "task.update" : "note.update", payload);
   notify();
@@ -216,23 +238,23 @@ export async function applyBootstrap() {
   const data = await api<Bootstrap>("/api/bootstrap", undefined, 20000);
   lastSnapshotAt = Date.now();
 
+  // ler pendências locais ANTES da transação (tabelas fora do âmbito)
+  const outboxItems = await db.outbox.toArray();
+  const pendingNotes = new Set(outboxItems.filter((o) => o.action.startsWith("note.")).map((o) => o.entityId));
+  const pendingTasks = new Set(outboxItems.filter((o) => o.action.startsWith("task.")).map((o) => o.entityId));
+  const localNotes = await db.notes.toArray();
+  const localTasks = await db.tasks.toArray();
+
   await db.transaction("rw", [db.tasks, db.notes, db.folders, db.files, db.pins, db.meta], async () => {
     await db.tasks.clear();
     await db.folders.clear();
     await db.files.clear();
     await db.pins.clear();
-    // notas: preservar rascunhos locais pendentes
-    const pendingNotes = new Set((await db.outbox.toArray()).filter((o) => o.action.startsWith("note.")).map((o) => o.entityId));
-    const localNotes = await db.notes.toArray();
     await db.notes.clear();
     await db.notes.bulkPut(data.notes as never);
     for (const n of localNotes) {
       if (pendingNotes.has(n.id)) await db.notes.put(n); // versão local desejada
     }
-    // tarefas pendentes: preservar versão local
-    const pendingTasks = new Set((await db.outbox.toArray()).filter((o) => o.action.startsWith("task.")).map((o) => o.entityId));
-    const localTasks = await db.tasks.toArray();
-    await db.tasks.clear();
     await db.tasks.bulkPut(data.tasks as never);
     for (const t of localTasks) {
       if (pendingTasks.has(t.id)) await db.tasks.put(t);

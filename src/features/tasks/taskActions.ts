@@ -52,21 +52,25 @@ export async function createTask(title: string): Promise<Task | null> {
 }
 
 export async function updateTask(existing: Task, patch: Partial<Task>) {
-  const next: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+  // baseia sempre o payload no estado local mais recente
+  const local = (await db.tasks.get(existing.id)) ?? existing;
+  const next: Task = { ...local, ...patch, updatedAt: new Date().toISOString() };
   await upsertLocal(next, "task");
-  await enqueue(next.id, existing.revision, "task.update", taskPayload(next));
+  await enqueue(next.id, next.revision, "task.update", taskPayload(next));
 }
 
 export async function completeTask(existing: Task, memberId: string) {
-  const next: Task = { ...existing, completedAt: new Date().toISOString(), completedBy: memberId, updatedAt: new Date().toISOString() };
+  const local = (await db.tasks.get(existing.id)) ?? existing;
+  const next: Task = { ...local, completedAt: new Date().toISOString(), completedBy: memberId, updatedAt: new Date().toISOString() };
   await upsertLocal(next, "task");
-  await enqueue(next.id, existing.revision, "task.complete", {});
+  await enqueue(next.id, next.revision, "task.complete", {});
 }
 
 export async function reopenTask(existing: Task) {
-  const next: Task = { ...existing, completedAt: null, completedBy: null, updatedAt: new Date().toISOString() };
+  const local = (await db.tasks.get(existing.id)) ?? existing;
+  const next: Task = { ...local, completedAt: null, completedBy: null, updatedAt: new Date().toISOString() };
   await upsertLocal(next, "task");
-  await enqueue(next.id, existing.revision, "task.reopen", {});
+  await enqueue(next.id, next.revision, "task.reopen", {});
 }
 
 export async function deleteTask(existing: Task) {

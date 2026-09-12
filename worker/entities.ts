@@ -357,6 +357,9 @@ export async function applyOperation(member: Member, env: Env, op: Operation): P
     const row = await getRow(env, kind, op.entityId);
     if (!row) return fail("not_found", "Recurso inexistente.");
     checkAccess(kind, row, member);
+    // verificação otimista de revisão: o cliente declara a base em que editou
+    if (op.expectedRevision > 0 && row.revision !== op.expectedRevision)
+      return fail("conflict", "Revisão em conflito.");
 
     if (op.action === "task.complete") {
       if (row.completed_at) {

@@ -1,4 +1,5 @@
 import { differenceInCalendarDays, format, isSameDay, isSameMonth, isSameYear, startOfWeek, addDays } from "date-fns";
+import { pt } from "date-fns/locale";
 import { TZDate } from "@date-fns/tz";
 import type { Task } from "../../shared/types";
 
@@ -97,7 +98,7 @@ export function formatDue(task: Task): string | null {
   if (!task.dueDate) return null;
   const [y, m, d] = task.dueDate.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
-  const label = format(date, "d 'de' MMMM", { locale: undefined });
+  const label = format(date, "d 'de' MMMM", { locale: pt });
   const time = task.dueTime ? ` · ${task.dueTime}` : "";
   return `${label}${time}`;
 }

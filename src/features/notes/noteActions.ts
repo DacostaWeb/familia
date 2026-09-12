@@ -18,12 +18,16 @@ export function newNote(space: "private" | "archive"): Note {
 }
 
 export async function saveNote(existing: Note, patch: Partial<Note>) {
-  const next: Note = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+  const local = (await db.notes.get(existing.id)) ?? existing;
+  const next: Note = { ...local, ...existing, ...patch, updatedAt: new Date().toISOString() };
   await upsertLocal(next, "note");
-  if (existing.revision === 0) {
-    await enqueue(next.id, 0, "note.create", { title: next.title, content: next.content, space: next.space });
+  // já existe criação pendente ou o servidor já confirma esta nota?
+  const pending = await db.outbox.where("entityId").equals(next.id).toArray();
+  const hasCreate = pending.some((o) => o.action === "note.create");
+  if (hasCreate || (local && local.revision > 0)) {
+    await enqueue(next.id, next.revision, "note.update", { title: next.title, content: next.content });
   } else {
-    await enqueue(next.id, existing.revision, "note.update", { title: next.title, content: next.content });
+    await enqueue(next.id, 0, "note.create", { title: next.title, content: next.content, space: next.space });
   }
 }
 
